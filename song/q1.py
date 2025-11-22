@@ -1,6 +1,8 @@
-from input_data import q1_test, q1_p1, q1_p2, q1_p3
+from input_data import q1_p1, q1_p2, q1_p3
 import re
 from typing import List, Tuple
+
+# Problem statement: https://everybody.codes/event/2025/quests/1
 
 
 def parse_data(data: str) -> Tuple[List[str], List[str]]:
@@ -49,7 +51,7 @@ def part2(data: str):
 
 def part3(data: str):
     names, instructions = parse_data(data)
-    # position 0 is top of circle; higher positions go clockwise
+    # imagine position 0 is top of circle; higher indices go clockwise
     MODULUS = len(names)
     for instruction in instructions:
         dir, steps = parse_instruction(instruction)
