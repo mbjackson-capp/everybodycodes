@@ -27,6 +27,7 @@ class ComplexNumber:
     def __truediv__(self, other):
         return ComplexNumber(x=trunc(self.x / other.x), y=trunc(self.y / other.y))
 
+    @property
     def is_in_bounds(self):
         LOWER_BOUND = -1_000_000
         UPPER_BOUND = 1_000_000
@@ -57,40 +58,29 @@ def test_regression_complex_numbers():
 
 
 def part1(
-    sample_number: ComplexNumber, divisor: int = 10, cycles: int = 3, debug=False
+    sample_number: ComplexNumber, divisor: int = 10, cycles: int = 3
 ) -> ComplexNumber:
     result = ComplexNumber(0, 0)
     for cycle in range(cycles):
         result *= result
         result /= ComplexNumber(divisor, divisor)
         result += sample_number
-        if debug:
-            print(f"P={sample_number} R={result}\t\tC={cycle}")
-        if not result.is_in_bounds():
-            raise OverflowError(
-                f"A value of {result} is out of bounds at cycle {cycle}"
-            )
+        if not result.is_in_bounds:
+            break
     return result
 
 
-def should_be_engraved(point: ComplexNumber, debug=False) -> bool:
-    try:
-        result = part1(point, divisor=100_000, cycles=100, debug=debug)
-        return True
-    except OverflowError:
-        return False
-
-
-def count_engraved_points(
-    start: ComplexNumber, debug: bool = False, is_part3: bool = False
-) -> int:
+def count_engraved_points(start: ComplexNumber, is_part3: bool = False) -> int:
     to_engrave = []
     PLATE_SIZE = 1000
     STEP_SIZE = 1 if is_part3 else 10
+    # check all the points
     for x in tqdm(range(start.x, start.x + PLATE_SIZE + 1, STEP_SIZE)):
         for y in range(start.y, start.y + PLATE_SIZE + 1, STEP_SIZE):
             point = ComplexNumber(x, y)
-            if should_be_engraved(point, debug=debug):
+            # should this point be engraved?
+            result = part1(point, divisor=100_000, cycles=100)
+            if result.is_in_bounds:
                 to_engrave.append(point)
     return len(to_engrave)
 
