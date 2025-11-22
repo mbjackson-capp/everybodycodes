@@ -1,5 +1,6 @@
 from dataclasses import dataclass
-from math import floor, trunc
+from math import trunc
+from tqdm import tqdm
 
 
 @dataclass
@@ -25,6 +26,16 @@ class ComplexNumber:
 
     def __truediv__(self, other):
         return ComplexNumber(x=trunc(self.x / other.x), y=trunc(self.y / other.y))
+
+    def is_in_bounds(self):
+        LOWER_BOUND = -1_000_000
+        UPPER_BOUND = 1_000_000
+        return (
+            self.x >= LOWER_BOUND
+            and self.x <= UPPER_BOUND
+            and self.y >= LOWER_BOUND
+            and self.y <= UPPER_BOUND
+        )
 
 
 def test_regression_complex_numbers():
@@ -55,23 +66,17 @@ def part1(
         result += sample_number
         if debug:
             print(f"P={sample_number} R={result}\t\tC={cycle}")
+        if not result.is_in_bounds():
+            raise OverflowError(
+                f"A value of {result} is out of bounds at cycle {cycle}"
+            )
     return result
 
 
 def should_be_engraved(point: ComplexNumber, debug=False) -> bool:
     try:
         result = part1(point, divisor=100_000, cycles=100, debug=debug)
-        LOWER_BOUND = -1_000_000
-        UPPER_BOUND = 1_000_000
-        return (
-            result.x >= LOWER_BOUND
-            and result.x <= UPPER_BOUND
-            and result.y >= LOWER_BOUND
-            and result.y <= UPPER_BOUND
-        )
-    # Some values explode as cycles continue; hoping for now
-    # that an exploding sequence will never reach a state where
-    # it stops exploding and decreases
+        return True
     except OverflowError:
         return False
 
@@ -82,9 +87,7 @@ def count_engraved_points(
     to_engrave = []
     PLATE_SIZE = 1000
     STEP_SIZE = 1 if is_part3 else 10
-    # check 101 x 101 points evenly spaced along grid
-    for x in range(start.x, start.x + PLATE_SIZE + 1, STEP_SIZE):
-        print(f"x = {x}")
+    for x in tqdm(range(start.x, start.x + PLATE_SIZE + 1, STEP_SIZE)):
         for y in range(start.y, start.y + PLATE_SIZE + 1, STEP_SIZE):
             point = ComplexNumber(x, y)
             if should_be_engraved(point, debug=debug):
@@ -103,6 +106,7 @@ A_p2 = ComplexNumber(-79017, -15068)
 if __name__ == "__main__":
     test_regression_complex_numbers()
     print(f"Part 1 answer: {part1(A_p1)}")
+    print("Now calculating part 2 answer...")
     print(f"Part 2 answer: {count_engraved_points(A_p2)}")
     print(f"Now calculating part 3 answer...this could take a few minutes...")
     print(f"Part 3 answer: {count_engraved_points(A_p2, is_part3=True)}")
