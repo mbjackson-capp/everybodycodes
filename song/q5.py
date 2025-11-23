@@ -91,7 +91,7 @@ class Sword:
         """Determine whether this Sword is 'worse' than another.
         Used to define sort order for sorted() for part 3.
         See: https://docs.python.org/3/howto/sorting.html#odds-and-ends"""
-        # First: check quality
+        # First: compare quality
         if self.quality < other.quality:
             return True
         elif self.quality > other.quality:
