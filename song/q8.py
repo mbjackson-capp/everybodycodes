@@ -1,8 +1,8 @@
-from input_data import q8_p1, q8_p2
+from input_data import q8_p1, q8_p2, q8_p3
 from tqdm import tqdm
 
 from math import cos, sin, pi
-from itertools import pairwise
+from itertools import combinations, pairwise
 from shapely import LineString
 from typing import Tuple, List
 
@@ -22,7 +22,7 @@ def part1(seq: str, num_nails=32):
 def construct_frame(num_nails=8) -> dict:
     CIRCUMFERENCE = 2 * pi
     TOL = 1e-15
-    increment = CIRCUMFERENCE / num_nails
+    increment = (CIRCUMFERENCE) / num_nails
     nail_spots = {}
     for nail in range(num_nails):
         spot = nail + 1  # nails in problem spec increment from 1
@@ -33,7 +33,11 @@ def construct_frame(num_nails=8) -> dict:
     return nail_spots
 
 
-def make_artwork(seq: str, num_nails=256) -> Tuple[List[LineString], int]:
+def make_artwork(seq: str, num_nails=256) -> Tuple[dict, List[LineString], int]:
+    """
+    Beware this is O(n^2) and will slow down as it goes if inputs get large,
+    since each new string has to look back at all previous strings.
+    """
     nails = construct_frame(num_nails=num_nails)
     string_specs = list(pairwise([int(i) for i in seq.split(",")]))
     strings = []
@@ -57,11 +61,30 @@ def make_artwork(seq: str, num_nails=256) -> Tuple[List[LineString], int]:
                 knot_count += 1
         strings.append(new_string)
     print(f"Total knots: {knot_count}")
-    return strings, knot_count
+    return nails, strings, knot_count
+
+
+def part3(seq: str, num_nails=256) -> int:
+    """TODO: fix some errors, the answer is slightly incorrect
+    (right length and starting digit)"""
+    nails, strings, _ = make_artwork(seq, num_nails=num_nails)
+    cuts = combinations(range(1, num_nails + 1), 2)
+    max_threads_cut = 0
+    for cut in tqdm(cuts):
+        path = LineString([nails[cut[0]], nails[cut[1]]])
+        # subtract 2 since endpoints along the rim of the string art aren't cut
+        threads_cut = len({s for s in strings if s.intersects(path)}) - 2
+        if threads_cut > max_threads_cut:
+            max_threads_cut = threads_cut
+    return max_threads_cut
 
 
 if __name__ == "__main__":
     print(f"Part 1 answer: {part1(q8_p1)}")
     print(f"Now calculating Part 2...this could take a few minutes...")
-    _, p2_ans = make_artwork(q8_p2)
+    _, _, p2_ans = make_artwork(q8_p2)
     print(f"Part 2 answer: {p2_ans}")
+    print(
+        f"Now calculating Part 3...this could take a few minutes and has 2 progress bars..."
+    )
+    print(f"Part 3 answer: {part3(q8_p3)}")
