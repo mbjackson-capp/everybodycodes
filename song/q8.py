@@ -1,10 +1,10 @@
 from input_data import q8_p1, q8_p2, q8_p3
-from tqdm import tqdm
 
-from math import cos, sin, pi
 from itertools import combinations, pairwise
-from shapely import LineString
-from typing import Tuple, List
+from tqdm import tqdm
+from typing import Tuple
+
+test1 = "1,5,2,6,8,4,1,7,3"
 
 
 def part1(seq: str, num_nails=32):
@@ -19,72 +19,107 @@ def part1(seq: str, num_nails=32):
     return center_crosses
 
 
-def construct_frame(num_nails=8) -> dict:
-    CIRCUMFERENCE = 2 * pi
-    TOL = 1e-15
-    increment = (CIRCUMFERENCE) / num_nails
-    nail_spots = {}
-    for nail in range(num_nails):
-        spot = nail + 1  # nails in problem spec increment from 1
-        angle = increment * nail
-        x = 0 if abs(sin(angle)) < TOL else sin(angle)
-        y = 0 if abs(cos(angle)) < TOL else cos(angle)
-        nail_spots[spot] = (x, y)
-    return nail_spots
-
-
-def make_artwork(seq: str, num_nails=256) -> Tuple[dict, List[LineString], int]:
+def have_overlap(
+    r1: Tuple[int, int], r2: Tuple[int, int], include_endpoints=True
+) -> bool:
     """
-    Beware this is O(n^2) and will slow down as it goes if inputs get large,
-    since each new string has to look back at all previous strings.
+    Determine if two ranges along the same axis/number line have overlap,
+    without one range being entirely a subrange of the other.
+
+    Motivation: If you treat the nail numbers that start and end each thread as
+    a range, overlap in those ranges is sufficient to establish that their
+    intersection must exist within the center of the circle, provided that one
+    range is not entirely a subrange of the other. In other words, the problem of
+    "whether threads intersect" around a circle reduces entirely to whether ranges
+    intersect along a number line, so we don't need to convert nail numbers to
+    coordinates, solve analytically for intersections, use shapely, or care about
+    how many nails are in the circle in the first place, greatly reducing runtime.
+
+    Special thanks to reddit user u/Horsdudoc for stating this insight succintly.
     """
-    nails = construct_frame(num_nails=num_nails)
-    string_specs = list(pairwise([int(i) for i in seq.split(",")]))
-    strings = []
-    knot_count = 0
-    for spec in tqdm(string_specs):
-        start, end = spec
-        start_xy = nails[start]
-        end_xy = nails[end]
-        new_string = LineString([start_xy, end_xy])
-        for string in strings:
-            # make sure they don't have a start or end point in common
-            all_termina = {
-                string.coords[0],
-                string.coords[1],
-                new_string.coords[0],
-                new_string.coords[1],
-            }
-            if len(all_termina) < 4:
-                continue
-            if string.intersects(new_string):
-                knot_count += 1
-        strings.append(new_string)
-    print(f"Total knots: {knot_count}")
-    return nails, strings, knot_count
+    # put lower number first in both ranges
+    r1_lb = min(r1)
+    r1_ub = max(r1)
+
+    r2_lb = min(r2)
+    r2_ub = max(r2)
+
+    # swap them so earlier range is always first
+    if r2_ub < r1_ub:
+        return have_overlap((r2_lb, r2_ub), (r1_lb, r1_ub))
+
+    # make sure one range doesn't strictly contain the other
+    if (r1_lb < r2_lb and r1_ub > r2_ub) or (r2_lb < r1_lb and r2_ub > r1_ub):
+        return False
+
+    # do proper comparison of greatest lower-bound with least upper-bound
+    if r1_ub == r2_lb:
+        return include_endpoints
+    return r2_lb < r1_ub
 
 
-def part3(seq: str, num_nails=256) -> int:
-    """TODO: fix some errors, the answer is slightly incorrect
-    (right length and starting digit)"""
-    nails, strings, _ = make_artwork(seq, num_nails=num_nails)
-    cuts = combinations(range(1, num_nails + 1), 2)
-    max_threads_cut = 0
-    for cut in tqdm(cuts):
-        path = LineString([nails[cut[0]], nails[cut[1]]])
-        # subtract 2 since endpoints along the rim of the string art aren't cut
-        threads_cut = len({s for s in strings if s.intersects(path)}) - 2
-        if threads_cut > max_threads_cut:
-            max_threads_cut = threads_cut
-    return max_threads_cut
+def test_have_overlap():
+    assert have_overlap((0, 3), (5, 10)) == False
+    assert have_overlap((0, 6), (5, 10)) == True
+    # should be order-invariant
+    assert have_overlap((5, 10), (0, 3)) == False
+    assert have_overlap((5, 10), (0, 6)) == True
+    assert have_overlap((10, 5), (3, 0)) == False
+    assert have_overlap((10, 5), (6, 0)) == True
+    # check endpoint exclusion
+    assert have_overlap((0, 5), (5, 10), include_endpoints=False) == False
+    assert have_overlap((0, 5), (5, 10), include_endpoints=True) == True
+    # check non-containment
+    assert have_overlap((1, 4), (2, 3)) == False
+
+
+def intersect_within_circle(
+    old_thread: Tuple[int, int], new_thread: Tuple[int, int]
+) -> bool:
+    """Check whether threads strung between two pairs of start/end points of a
+    circular artwork intersect in the circle.
+    Note that if they share an endpoint, they can't intersect within circle proper."""
+    all_endpoints = {new_thread[0], new_thread[1], old_thread[0], old_thread[1]}
+    if len(all_endpoints) < 4:
+        return False
+    return have_overlap(new_thread, old_thread, include_endpoints=False)
+
+
+def part2(seq: str):
+    seq = list(pairwise([int(i) for i in seq.split(",")]))
+    threads = []
+    knots = 0
+    for new_thread in tqdm(seq):
+        for old_thread in threads:
+            if intersect_within_circle(new_thread, old_thread):
+                knots += 1
+        threads.append(new_thread)
+    return knots
+
+
+def part3(seq, num_nails=256):
+    threads = list(pairwise([int(i) for i in seq.split(",")]))
+    strikes = list(combinations(range(1, num_nails + 1), 2))
+    max_cuts = 0
+    for strike in tqdm(strikes):
+        # must account for, e.g., (3,5) and (5,3) being separate threads
+        backward_strike = (strike[1], strike[0])
+        # must also account for multiplicity of threads created in same direction
+        # between same two nails by using list comprehension instead of set
+        cuts = [t for t in threads if intersect_within_circle(strike, t)]
+        if strike in threads or backward_strike in threads:
+            threads_along_strike = [
+                t for t in threads if t in (strike, backward_strike)
+            ]
+            cuts.append(threads_along_strike)
+        if len(cuts) > max_cuts:
+            max_cuts = len(cuts)
+    return max_cuts
 
 
 if __name__ == "__main__":
+    test_have_overlap()
     print(f"Part 1 answer: {part1(q8_p1)}")
-    print(f"Now calculating Part 2...this could take a few minutes...")
-    _, _, p2_ans = make_artwork(q8_p2)
-    print(f"Part 2 answer: {p2_ans}")
-    print(
-        f"Now calculating Part 3...this could take a few minutes and has 2 progress bars..."
-    )
+    print(f"Part 2 answer: {part2(q8_p2)}")
+    print(f"Now computing Part 3 answer... This may take a few minutes...")
     print(f"Part 3 answer: {part3(q8_p3)}")
