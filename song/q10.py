@@ -23,14 +23,10 @@ def find_dragon(board: np.array) -> Tuple[int, int]:
     return tuple([int(i) for i in dragon_locs[0]])
 
 
-def find_sheep(board: np.array) -> Tuple[np.array, Tuple[int, int]]:
-    sheep_locs = np.argwhere(board == SHEEP)
-    return board, set([(int(i[0]), int(i[1])) for i in sheep_locs])
-
-
-def find_hideouts(board: np.array) -> Tuple[np.array, Tuple[int, int]]:
-    hideout_locs = np.argwhere(board == HIDEOUT)
-    return board, set([(int(i[0]), int(i[1])) for i in hideout_locs])
+def find_symbol(board: np.array, symbol: str) -> Tuple[np.array, Tuple[int, int]]:
+    assert symbol in (SHEEP, HIDEOUT), f"Symbol {symbol} isn't meaningful"
+    sym_locs = np.argwhere(board == symbol)
+    return set([(int(i[0]), int(i[1])) for i in sym_locs])
 
 
 @cache
@@ -96,15 +92,9 @@ def dragon_move_range(
 def get_edible_sheep_locs(
     dragon_spaces: Set[Tuple[int, int]],
     sheep_spaces: Set[Tuple[int, int]],
-    board: np.array,
+    hideout_spaces: Set[Tuple[int, int]],
 ) -> Set[Tuple[int, int]]:
-    spaces_to_check = dragon_spaces.intersection(sheep_spaces)
-    edibles = set()
-    for space in spaces_to_check:
-        x, y = space
-        if board[x][y] != "#":
-            edibles.add(space)
-    return edibles
+    return dragon_spaces.intersection(sheep_spaces) - hideout_spaces
 
 
 def move_sheep(sheep_locs: List[Tuple[int, int]], b: np.array) -> Set[Tuple[int, int]]:
@@ -122,18 +112,18 @@ def move_sheep(sheep_locs: List[Tuple[int, int]], b: np.array) -> Set[Tuple[int,
 def part1(data: str, moves_allowed=4) -> int:
     b = make_board(data)
     dragon_space = find_dragon(b)
-    b, sheep_spaces = find_sheep(b)
+    sheep_spaces = find_symbol(b, SHEEP)
     x_max, y_max = b.shape
     dragon_range = dragon_move_range(dragon_space, x_max, y_max, moves_allowed)
-    sheep_in_danger = get_edible_sheep_locs(dragon_range, sheep_spaces, b)
+    sheep_in_danger = get_edible_sheep_locs(dragon_range, sheep_spaces, set())
     return len(sheep_in_danger)
 
 
 def part2(data: str, n_turns=20) -> int:
     b = make_board(data)
     dragon_space = find_dragon(b)
-    b, sheep_spaces = find_sheep(b)
-    b, hideout_spaces = find_hideouts(b)
+    sheep_spaces = find_symbol(b, SHEEP)
+    hideout_spaces = find_symbol(b, HIDEOUT)
     x_max, y_max = b.shape
     total_edible_ever = 0
 
@@ -143,12 +133,16 @@ def part2(data: str, n_turns=20) -> int:
             dragon_space, x_max, y_max, turn, strict=True
         )
         # Check which sheep are edible after dragon has moved
-        edible_check_a = get_edible_sheep_locs(this_turn_dragon_range, sheep_spaces, b)
+        edible_check_a = get_edible_sheep_locs(
+            this_turn_dragon_range, sheep_spaces, hideout_spaces
+        )
         sheep_spaces = sheep_spaces - edible_check_a
         # Sheep take their move; survivors at edge of board exit
         sheep_spaces = move_sheep(sheep_spaces, b)
         # Check which sheep are edible after sheep have moved
-        edible_check_b = get_edible_sheep_locs(this_turn_dragon_range, sheep_spaces, b)
+        edible_check_b = get_edible_sheep_locs(
+            this_turn_dragon_range, sheep_spaces, hideout_spaces
+        )
         sheep_spaces = sheep_spaces - edible_check_b
 
         total_edible_this_turn = len(edible_check_a) + len(edible_check_b)
