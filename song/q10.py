@@ -1,4 +1,4 @@
-from input_data import qten_p1, qten_p2
+from input_data import qten_p1, qten_p2, qten_p3
 
 
 from copy import deepcopy
@@ -14,6 +14,8 @@ DRAGON = "D"
 SHEEP = "S"
 HIDEOUT = "#"
 PLAIN = "."
+
+#### PART 1 & 2 ###############################################################
 
 
 def make_board(board_data: str) -> np.array:
@@ -41,7 +43,6 @@ def knight_moves(
     (2 squares forward, one square sideways, where 'forward' can be any direction)
     on a board of this size."""
     x, y = start_space
-    # TODO: generate these more elegantly
     move_options = [
         (x + 2, y + 1),
         (x + 2, y - 1),
@@ -88,7 +89,7 @@ def dragon_move_range(
     )
     if not strict:
         # To get all options within UP TO n hops, rather than EXACTLY n hops,
-        # don't forget to include starting space in result set
+        # include starting space in result set
         return outer_hops | {this_space}
     return outer_hops
 
@@ -99,6 +100,16 @@ def get_edible_sheep_locs(
     hideout_spaces: Set[Tuple[int, int]],
 ) -> Set[Tuple[int, int]]:
     return dragon_spaces.intersection(sheep_spaces) - hideout_spaces
+
+
+def part1(data: str, moves_allowed=4) -> int:
+    b = make_board(data)
+    dragon_space = find_dragon(b)
+    sheep_spaces = find_symbol(b, SHEEP)
+    x_max, y_max = b.shape
+    dragon_range = dragon_move_range(dragon_space, x_max, y_max, moves_allowed)
+    sheep_in_danger = get_edible_sheep_locs(dragon_range, sheep_spaces, set())
+    return len(sheep_in_danger)
 
 
 def move_all_sheep(
@@ -113,16 +124,6 @@ def move_all_sheep(
         if x + 1 < x_max:  # sheep that run 'off' the board 'escape'
             new_sheep_locs.add(new_loc)
     return new_sheep_locs
-
-
-def part1(data: str, moves_allowed=4) -> int:
-    b = make_board(data)
-    dragon_space = find_dragon(b)
-    sheep_spaces = find_symbol(b, SHEEP)
-    x_max, y_max = b.shape
-    dragon_range = dragon_move_range(dragon_space, x_max, y_max, moves_allowed)
-    sheep_in_danger = get_edible_sheep_locs(dragon_range, sheep_spaces, set())
-    return len(sheep_in_danger)
 
 
 def part2(data: str, n_turns=20) -> int:
@@ -157,39 +158,7 @@ def part2(data: str, n_turns=20) -> int:
     return total_edible_ever
 
 
-"""
-PART 3 BRAINSTORM NOTES
-This is going to be a more complicated version of the "possible complete
-tic-tac-toe games" practice problem from 121.
-Think about termination conditions:
-    - If *even one* sheep moves off the grid such that it escapes, it becomes
-    impossible for the dragon to eat *all* the sheep and thus the game ends
-    (the sheep "win")
-    - Elif there are *no* sheep on the board, the dragon must have eaten them
-    all and thus the game ends (the dragon "wins")
-    - Else keep playing turns 
-So you want a recursive function that will check if a termination (base) case
-has been reached in the current game state, then if none has, generate every 
-possible next move from the current game state as the next layer down of the 
-"game tree"
-
-This might be a good use of a dataclass that includes: 
-    -the move sequence this far (can be a string or list)
-    -who moves next (may not be necessary to preserve; can be inferred from board state)
-        (might also be easier to do who moved last)
-    -where all the sheep currently are (with max 1 per column and all possible
-    moves being straight down, you can preserve a row number or None for each column)
-    -where the dragon currently is
-    -where all the hideouts are
-you may also want some way of reconstructing paste game states from a sequence
-
-You can use ord() minus a constant to interconvert from column letters to integers
-None of the example or real inputs have more than 26 columns and you could just
-keep going into the range of basic ASCII symbols if you wanted after that
-
-it would really be nice to be able to cache stuff, so avoid unhashable types
-as input if possible
-"""
+#### PART 3 HELPER FUNCTIONS ##################################################
 
 
 def to_alphanum(loc: Tuple[int, int]) -> str:
@@ -213,14 +182,19 @@ def to_loc(alphanum: str) -> Tuple[int, int]:
     return (x, y)
 
 
-def test_to_alphanum():
-    assert to_alphanum((0, 0)) == "A1", f"Expected 'A1', got {to_alphanum((0, 0))}"
-    assert to_alphanum((4, 6)) == "G5", f"Expected 'G5', got {to_alphanum((4, 6))}"
+def is_saved(
+    sheep: Tuple[int, int], hideouts: Set[Tuple[int, int]], max_x: int
+) -> bool:
+    """Check if all spaces from this sheep to the bottom of the board, inclusive,
+    are hideouts. If this is true of any sheep, the game is over and the sheep
+    have won.
+    Reddit thread: 'As soon as a sheep reaches a series of hiding spots that spans
+    down to the end of the board, it is safe, and the ...branch can be pruned'"""
+    x, y = sheep
+    return all([(sx, y) in hideouts for sx in range(x, max_x)])
 
 
-def test_to_loc():
-    assert to_loc("A1") == (0, 0), f"Expected (0,0), got {to_loc("A1")}"
-    assert to_loc("G5") == (4, 6), f"Expected (4,6), got {to_loc("G5")}"
+#### PART 3 ###################################################################
 
 
 class DragonChessGame:
@@ -233,7 +207,7 @@ class DragonChessGame:
         self.hideouts = find_symbol(board, HIDEOUT)
 
         self.sequence = ""
-        self.next_mover = "sheep"  # TODO: consider using an Enum
+        self.next_mover = "sheep"
         del board
 
         if len(set([i[1] for i in self.sheeps])) < len([i[1] for i in self.sheeps]):
@@ -243,9 +217,14 @@ class DragonChessGame:
 
     @property
     def winner(self):
+        # Any sheep within a sequence of hideouts running all the way to the
+        # end of the board can never be eaten
+        if any([is_saved(s, self.hideouts, self.max_x) for s in self.sheeps]):
+            return "sheep"
+        # If any sheep has escaped the board, the dragon can't eat all of them
         if any([(s[0] >= self.max_x) for s in self.sheeps]):
             return "sheep"
-        elif len(self.sheeps) == 0:
+        elif len(self.sheeps) == 0:  # dragon's goal: eat all sheep
             return "dragon"
         else:
             return None
@@ -266,8 +245,11 @@ class DragonChessGame:
         if self.winner:
             return None
         elif self.next_mover == "sheep":
+            # sheep can advance to dragon's spot only if there's a hideout there too
             next_locs = [
-                (s[0] + 1, s[1]) for s in self.sheeps if (s[0] + 1, s[1]) != self.dragon
+                (s[0] + 1, s[1])
+                for s in self.sheeps
+                if (s[0] + 1, s[1]) != self.dragon or (s[0] + 1, s[1]) in self.hideouts
             ]
             if next_locs:
                 return sorted([f"S>{to_alphanum(loc)}" for loc in next_locs])
@@ -293,9 +275,8 @@ class DragonChessGame:
         to_space = to_loc(move_spec[2:])
 
         if mover == SHEEP:
-            # take out the sheep already on this column
+            # replace sheep on this column with a new one a step lower
             self.sheeps = {s for s in self.sheeps if s[1] != to_space[1]}
-            # replace it with a new one, a step lower
             self.sheeps.add(to_space)
             if to_space[0] < self.max_x:
                 self.sequence += f" {move_spec}"
@@ -311,21 +292,8 @@ class DragonChessGame:
         return deepcopy(self)
 
     def __eq__(self, other):
-        return (
-            isinstance(other, DragonChessGame)
-            and self.sequence == other.sequence
-            and self.max_x == other.max_x
-            and self.max_y == other.max_y
-            and self.dragon == other.dragon
-            and self.sheeps == other.sheeps
-            and self.hideouts == other.hideouts
-            and self.next_mover == other.next_mover
-            and self.winner == other.winner
-        )
-
-    def matches(self, other):
         """Check that two games have the same current board state, irrespective
-        of whether a different sequence of events generated that state on each"""
+        of previous game sequence."""
         return (
             isinstance(other, DragonChessGame)
             and self.max_x == other.max_x
@@ -338,9 +306,10 @@ class DragonChessGame:
         )
 
     def __hash__(self):
+        """Hash the current board state, ignoring previous game sequence.
+        This is necessary for memoization to work properly."""
         return hash(
             (
-                self.sequence,
                 self.max_x,
                 self.max_y,
                 self.dragon,
@@ -352,166 +321,82 @@ class DragonChessGame:
         )
 
 
-test_3a = """SSS
-..#
-#.#
-#D."""
-
-
-def mock_game():
-    game = DragonChessGame(test_3a)
-    print(game, "\n", game.legal_moves)
-    # turn cycle 1
-    game.do_move("S>A2")
-    print(game, "\n", game.legal_moves)
-
-    game.do_move("D>A2")
-    print(game, "\n", game.legal_moves)
-    assert len(game.sheeps) == 2
-    # turn cycle 2
-    game.do_move("S>B2")
-    print(game, "\n", game.legal_moves)
-
-    game.do_move("D>C1")
-    print(game, "\n", game.legal_moves)
-    assert len(game.sheeps) == 1
-
-    # turn cycle 3
-    game.do_move("S>B3")
-    print(game, "\n", game.legal_moves)
-
-    game.do_move("D>B3")
-    print(game, "\n", game.legal_moves)
-    assert game.winner == "dragon"
-
+def simulate_move_sequence(game: DragonChessGame, move_seq: str) -> DragonChessGame:
+    """For testing purposes. Run a game through a list of moves and return
+    the game after those moves are performed"""
+    moves = move_seq.split(" ")
+    for move in moves:
+        print(f"Performing move {move}")
+        game.do_move(move)
     return game
 
 
-def test_game_copy():
-    game_3a = DragonChessGame(test_3a)
-    game_3a_2 = game_3a.copy()
-    game_3a_3 = mock_game()
-    game_3a_4 = game_3a_3.copy()
-    assert game_3a == game_3a_2
-    assert game_3a is not game_3a_2
-    assert game_3a_3 == game_3a_4
-    assert game_3a_3 is not game_3a_4
-
-
 """
-Okay, now that I have a working game object that can be mocked through a game,
-let's figure out the recursive structure for the branching game tree that will 
-play every possible game from the start.
+Initialize a dictionary where each key is a (hashed representation of) game 
+state IRRESPECTIVE of previous game sequence, and each value is the number
+of descendant states from that game in which the dragon has won.
 
-Ultimate goal: get a list of game.sequence objects from every board the dragon
-can win in the game tree descended from this one.
-Then return the length of that list of sequences to user.
-
-Input type: DragonChessGame of length 1
-Output type: List[List[str]]
-
-Start with a game
-initialize empty list next_boards = []
-if the game has a winner and the winner is "dragon":
-    - return [game.sequence] # base case 1: single winner found
-elif the board has a winner and the winner is "sheep":
-    - return [] # base case 2: no winner possible
-else:
-    - create next_games = [game.do_move(move) for move in game.next_moves]
-    - concatenate together proc(game) for game in next_games # recursive step
-
-Unfortunately, this produces a combinatorially explosive number of possible game states
-and even with @cache decorator it takes several minutes to get through an example
-And even then, a macbook can run out of memory and crash midway through
-
-May want to "prune" some branches where it's pretty clear the dragon can't get everything.
-if all the sheep are on the bottom row, for example, and the dragon is above that row,
-the game is over and no possible victories could happen after that. because
-no matter where the dragon goes, one sheep will get out. you don't need to simulate
-every possible action after that
-and you can "backward induct" a variety of cases similar to that one which don't
-need evaluation
-
-You need to preserve the sequence as part of game state to get the correct answer,
-but maybe some infra-equality operator could check if this board has been seen before
-and/or cache no-win boards independent of the sequence used to reach them
-if the sheep and dragon are in a particular configuration it shoulnd't matter if the dragon
-circled around a couple of times failing to get them.
-(Confirmed, u/Grand-Sale-2343: 'if we see a state that has alredy been visited 
-(dragon, sheep, turn) you could cache the result and avoid to re-explore that path,
-even if the sequence of moves that led to that point was different.')
-^ would need to create a custom decorator or wrapper function to store that cache 
-outside the recursive function body, so it can be looked up for a particular run
-without bleeding over into other runs on other boards 
-
-Reddit solutions thread: 'As soon as a sheep reaches a series of hiding spots that 
-spans down to the end of the board, it is safe, and the ...branch can be pruned'
-
-You can also just return 1 for dragon win board, 0 for sheep win board,
-and do numeric addition rather than set union of big strings, that could be faster
+The insight here is that the descendant game trees for a given game state
+do not depend on the sequence of moves it took for the game state to be reached.
+(Reddit user u/Grand-Sale-2343: 'if we see a state that has alredy been visited
+... you could cache the result and avoid to re-explore that path, even if the 
+sequence of moves that led to that point was different.')
+We also only return the count of descendant sequences, and don't preserve what 
+those sequences actually are, which makes the antecedent sequence truly 
+irrelevant.
+This gets emptied at the start of part3() execution and preserved/modified
+as a global variable by the recursive function to avoid having to pass it in
+as an argument.
 """
+memo = {}
 
 
-@cache
-def all_dragon_win_seqs(game: DragonChessGame, depth=0) -> Set[str]:
+def num_dragon_win_seqs(game: DragonChessGame) -> int:
     """
-    Recursive function that serves as the heart of Part 3.
+    Consider the 'game tree' descending from this game's state, where this node
+    is the root and each child of the root is a possible game state from one
+    legal move played on this game. (And so on.)
 
-    Consider the game tree descending from this game's state, where this node
-    is the root and each possible game state after one possible move
-    directly following this one is a child of the root. (And so on.)
+    Return the number of descendant game states in which the dragon has eaten all
+    the sheep (these will be a subset of the "leaf nodes" / base cases).
 
-    Return a set of sequences from every descendant game state in which the
-    dragon has eaten all the sheep (these will be a subset of the "leaf nodes"
-    / base cases).
+    Recursive function checks if the current game state has terminated.
+    If it hasn't, generate every possible next move from the current game state as the
+    next layer down of the  "game tree" and run again on each board created by
+    doing one of those moves.
     """
-    print("\n")
-    print(game.sequence)
-    print(f"\nNext moves: {game.legal_moves}")
-    if game.winner == "sheep":  # Base case 1:
-        print(f"SHEEP WINNER GAME BASE CASE HIT AT DEPTH {depth}. RETURN NOTHING")
-        return set()
-    elif game.winner == "dragon":
-        print(f"DRAGON WINNER GAME BASE CASE HIT AT DEPTH {depth}. RETURN ITS SEQUENCE")
-        return {game.sequence}
+    # Memoization: if descendant game tree will be the same as a descendant
+    # game tree already seen, just retrieve the number of dragon wins we
+    # saw when evaluating this game previously.
+    global memo
+    if game in memo:
+        return memo[game]
+
+    if game.winner == "sheep":  # Base case 1
+        return 0
+    elif game.winner == "dragon":  # Base case 2
+        return 1
     elif game.winner is None:  # Recursive step
         nexts = []
         for move in game.legal_moves:
             this_next_game = game.copy()
             this_next_game.do_move(move)
             nexts.append(this_next_game)
-        # get the list of lists of sequences for each game, then flatten that
-        # into a single list
-        # win_seqs_set = set()
-        # for next in nexts:
-        #     these_win_seqs = set(all_dragon_win_seqs(next, depth=depth + 1))
-        #     win_seqs_set = win_seqs_set | these_win_seqs
-        # return win_seqs_set
-        return reduce(
-            set.union, [all_dragon_win_seqs(next_game) for next_game in nexts]
-        )
+        result = sum([num_dragon_win_seqs(next_game) for next_game in nexts])
+        if game not in memo:
+            memo[game] = result
+        return result
 
 
-test_3b = """SSS
-..#
-..#
-.##
-.D#"""
+def part3(data: str) -> int:
+    global memo
+    memo = {}  # wipe the memoization
+    start_game = DragonChessGame(data)
+    return num_dragon_win_seqs(start_game)
+
 
 if __name__ == "__main__":
     print(f"Part 1 answer: {part1(qten_p1)}")
     print(f"Part 2 answer: {part2(qten_p2, n_turns=20)}")
-    test_to_alphanum()
-    test_to_loc()
-    game_3b = DragonChessGame(test_3b)
-    test3b_result = all_dragon_win_seqs(game_3b)
-    print(f"TEST 3B RESULTS:")
-    print(sorted(test3b_result))
-    print(len(test3b_result))
-    # test 3a should have length 15 but it's giving me 14. god dammit
-
-    # print(game_3a)
-    # print(len(game_3a))
-    # mock_3a = mock_game()
-    # mock3a_result = all_dragon_win_seqs(mock_3a)
-    # print(mock3a_result)
+    print("Now calculating Part 3 answer... This could take ~30-60 seconds...")
+    print(f"Part 3 answer: {part3(qten_p3)}")
